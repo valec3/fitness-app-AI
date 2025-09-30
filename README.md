@@ -278,3 +278,8 @@ Si tienes problemas o preguntas:
 ---
 
 **¡Disfruta usando la aplicación de seguimiento nutricional con IA!** 🎉
+
+## Capturas de pantalla
+
+![Captura de pantalla 1](./img/home.png)
+![Captura de pantalla 2](./img/end.png)
