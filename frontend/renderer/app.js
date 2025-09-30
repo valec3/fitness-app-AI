@@ -708,7 +708,7 @@ class NutritionTracker {
       this.isRecording = false;
       this.stopRecordingTimer();
       this.updateRecordingUI();
-      
+
       // Ocultar visualizador de audio
       this.hideAudioVisualizer();
 
@@ -791,11 +791,13 @@ class NutritionTracker {
   setupAudioVisualizer(stream) {
     const canvas = document.getElementById("audioCanvas");
     if (!canvas) {
-      console.log("🎨 Canvas audioCanvas no encontrado, saltando visualización");
+      console.log(
+        "🎨 Canvas audioCanvas no encontrado, saltando visualización"
+      );
       return;
     }
     const canvasContext = canvas.getContext("2d");
-    
+
     // Mostrar el visualizador
     const visualizerContainer = canvas.parentElement;
     if (visualizerContainer) {
@@ -884,7 +886,7 @@ class NutritionTracker {
         visualizerContainer.style.display = "none";
       }
     }
-    
+
     // Cerrar contexto de audio si existe
     if (this.audioContext) {
       this.audioContext.close();
