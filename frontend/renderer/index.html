@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Seguimiento Nutricional y Ejercicios</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <h1><i class="fas fa-microphone"></i> Seguimiento Nutricional</h1>
+        <div class="status-indicator">
+          <span id="backendStatus" class="status offline">
+            <i class="fas fa-circle"></i> Desconectado
+          </span>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Audio Recording Section -->
+        <section class="recording-section">
+          <div class="recording-controls">
+            <h2>
+              <i class="fas fa-record-vinyl"></i> Grabación y Transcripción
+            </h2>
+            <p class="description">
+              <strong>Modo Híbrido:</strong> Puedes usar reconocimiento de voz
+              (requiere internet) o escribir directamente el texto. Describe los
+              alimentos que comiste o ejercicios que hiciste y luego procesa con
+              IA.
+            </p>
+            <div class="input-mode-selector">
+              <label>
+                <input
+                  type="radio"
+                  name="inputMode"
+                  value="voice"
+                  id="voiceMode"
+                  checked
+                />
+                <span>🎤 Reconocimiento de Voz</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="inputMode"
+                  value="text"
+                  id="textMode"
+                />
+                <span>⌨️ Escribir Texto</span>
+              </label>
+            </div>
+            <div class="audio-controls" id="voiceControls">
+              <button id="recordBtn" class="btn btn-record" disabled>
+                <i class="fas fa-microphone"></i>
+                <span>Iniciar Grabación</span>
+              </button>
+              <button id="stopBtn" class="btn btn-stop" disabled>
+                <i class="fas fa-stop"></i>
+                <span>Detener</span>
+              </button>
+              <button id="playBtn" class="btn btn-play" disabled>
+                <i class="fas fa-play"></i>
+                <span>Reproducir</span>
+              </button>
+              <select id="languageSelect" class="btn btn-secondary">
+                <option value="es-ES" selected>Español (España)</option>
+                <option value="es-MX">Español (México)</option>
+                <option value="es-AR">Español (Argentina)</option>
+                <option value="en-US">English (US)</option>
+              </select>
+            </div>
+
+            <div class="text-controls" id="textControls" style="display: none">
+              <div class="text-input-area">
+                <textarea
+                  id="manualTextInput"
+                  placeholder="Escribe aquí lo que comiste o los ejercicios que hiciste. Por ejemplo: 'Desayuné dos huevos revueltos con tostada y corrí 30 minutos por la mañana.'"
+                  rows="4"
+                  class="input-mode-text"
+                ></textarea>
+                <button id="useTextBtn" class="btn btn-primary">
+                  <i class="fas fa-arrow-right"></i>
+                  <span>Usar este texto</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Audio Visualizer -->
+            <div class="audio-visualizer">
+              <canvas id="audioCanvas" width="400" height="100"></canvas>
+            </div>
+
+            <!-- Recording Status -->
+            <div class="recording-status">
+              <span id="recordingStatus">Listo para grabar y transcribir</span>
+              <span id="recordingTime">00:00</span>
+            </div>
+          </div>
+
+          <!-- Audio Preview -->
+          <div class="audio-preview">
+            <audio id="audioPreview" controls style="display: none"></audio>
+          </div>
+        </section>
+
+        <!-- Processing Section -->
+        <section class="processing-section">
+          <h2><i class="fas fa-cog"></i> Procesamiento</h2>
+          <div class="process-controls">
+            <button id="transcribeBtn" class="btn btn-primary" disabled>
+              <i class="fas fa-check"></i>
+              <span>Confirmar Transcripción</span>
+            </button>
+            <button id="processBtn" class="btn btn-primary" disabled>
+              <i class="fas fa-brain"></i>
+              <span>Procesar con IA</span>
+            </button>
+          </div>
+
+          <!-- Processing Status -->
+          <div class="processing-status">
+            <div id="processingSpinner" class="spinner" style="display: none">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span id="processingText">Procesando...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section">
+          <div class="results-tabs">
+            <button class="tab-btn active" data-tab="transcription">
+              <i class="fas fa-file-text"></i> Transcripción
+            </button>
+            <button class="tab-btn" data-tab="nutrition">
+              <i class="fas fa-apple-alt"></i> Nutrición
+            </button>
+            <button class="tab-btn" data-tab="exercise">
+              <i class="fas fa-dumbbell"></i> Ejercicios
+            </button>
+            <button class="tab-btn" data-tab="history">
+              <i class="fas fa-history"></i> Historial
+            </button>
+          </div>
+
+          <!-- Transcription Tab -->
+          <div id="transcriptionTab" class="tab-content active">
+            <h3><i class="fas fa-file-text"></i> Texto Transcrito</h3>
+            <div class="transcription-result">
+              <textarea
+                id="transcriptionText"
+                placeholder="El texto transcrito aparecerá aquí..."
+                readonly
+              ></textarea>
+              <div class="transcription-actions">
+                <button id="editTranscription" class="btn btn-secondary">
+                  <i class="fas fa-edit"></i> Editar
+                </button>
+                <button
+                  id="saveTranscription"
+                  class="btn btn-secondary"
+                  style="display: none"
+                >
+                  <i class="fas fa-save"></i> Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nutrition Tab -->
+          <div id="nutritionTab" class="tab-content">
+            <h3><i class="fas fa-apple-alt"></i> Información Nutricional</h3>
+            <div class="nutrition-results">
+              <div id="foodsList" class="foods-list">
+                <p class="empty-state">
+                  No hay información nutricional disponible
+                </p>
+              </div>
+              <div class="nutrition-summary">
+                <div class="summary-card">
+                  <h4>Resumen Calórico</h4>
+                  <div class="calorie-info">
+                    <span id="totalCalories">0</span> kcal
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Exercise Tab -->
+          <div id="exerciseTab" class="tab-content">
+            <h3><i class="fas fa-dumbbell"></i> Ejercicios Registrados</h3>
+            <div class="exercise-results">
+              <div id="exercisesList" class="exercises-list">
+                <p class="empty-state">No hay ejercicios registrados</p>
+              </div>
+              <div class="exercise-summary">
+                <div class="summary-card">
+                  <h4>Calorías Quemadas</h4>
+                  <div class="calorie-info">
+                    <span id="burnedCalories">0</span> kcal
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- History Tab -->
+          <div id="historyTab" class="tab-content">
+            <h3><i class="fas fa-history"></i> Historial de Registros</h3>
+            <div class="history-controls">
+              <button id="refreshHistory" class="btn btn-secondary">
+                <i class="fas fa-refresh"></i> Actualizar
+              </button>
+              <button id="exportData" class="btn btn-secondary">
+                <i class="fas fa-download"></i> Exportar
+              </button>
+            </div>
+            <div class="history-results">
+              <div id="historyList" class="history-list">
+                <p class="empty-state">No hay registros en el historial</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Toast Notifications -->
+      <div id="toastContainer" class="toast-container"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+  </body>
+</html>

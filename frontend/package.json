@@ -1,0 +1,30 @@
+{
+  "name": "nutrition-tracker-frontend",
+  "version": "1.0.0",
+  "description": "Frontend Electron para la aplicación de seguimiento nutricional",
+  "main": "main-desktop.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --inspect=5858",
+    "desktop": "electron main-desktop.js",
+    "desktop-dev": "electron main-desktop.js --inspect=5858",
+    "safe": "electron main-safe.js",
+    "dev-safe": "electron main-safe.js --inspect=5858",
+    "pack": "electron-packager . NutritionTracker --platform=all --arch=x64 --out=dist --overwrite",
+    "pack-win": "electron-packager . NutritionTracker --platform=win32 --arch=x64 --out=dist --overwrite",
+    "pack-mac": "electron-packager . NutritionTracker --platform=darwin --arch=x64 --out=dist --overwrite",
+    "pack-linux": "electron-packager . NutritionTracker --platform=linux --arch=x64 --out=dist --overwrite"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-packager": "^17.1.1"
+  },
+  "keywords": [
+    "electron",
+    "nutrition",
+    "voice",
+    "health"
+  ],
+  "author": "Nutrition Tracker Team",
+  "license": "MIT"
+}
