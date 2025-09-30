@@ -4,25 +4,46 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const AssemblyAITranscription = require("./assembly-transcription");
 require("dotenv").config();
 
 // Configuración del servidor Express
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Inicializar módulo de transcripción
+const assemblyTranscription = new AssemblyAITranscription();
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
+// Debug middleware para requests de audio
+app.use("/api/upload-audio", (req, res, next) => {
+  console.log("🔄 Request interceptado en /api/upload-audio");
+  console.log("📋 Method:", req.method);
+  console.log("📋 Headers:", req.headers);
+  console.log("📋 Content-Type:", req.headers["content-type"]);
+  console.log("📋 Content-Length:", req.headers["content-length"]);
+  next();
+});
+
 // Configuración de multer para manejar archivos de audio
 const upload = multer({
   dest: "uploads/",
   fileFilter: (req, file, cb) => {
+    console.log(
+      `🔍 Multer fileFilter - mimetype: ${file.mimetype}, fieldname: ${file.fieldname}`
+    );
     // Aceptar archivos de audio
-    if (file.mimetype.startsWith("audio/")) {
+    if (
+      file.mimetype.startsWith("audio/") ||
+      file.mimetype === "application/octet-stream"
+    ) {
       cb(null, true);
     } else {
+      console.log(`❌ Tipo de archivo rechazado: ${file.mimetype}`);
       cb(new Error("Solo se permiten archivos de audio"), false);
     }
   },
@@ -129,32 +150,93 @@ app.post("/api/transcribe", (req, res) => {
 });
 
 /**
- * Endpoint alternativo para subir audio (para futuras implementaciones)
- * Por ahora solo confirma la recepción del archivo
+ * Endpoint para subir y procesar archivos de audio
  */
 app.post("/api/upload-audio", upload.single("audio"), async (req, res) => {
   try {
+    console.log("🎤 Endpoint upload-audio llamado");
+    console.log("📋 Headers:", req.headers["content-type"]);
+    console.log("📋 Body keys:", Object.keys(req.body));
+    console.log("📋 File info:", req.file ? "SÍ" : "NO");
+
     if (!req.file) {
-      return res.status(400).json({ error: "No se recibió archivo de audio" });
+      console.error("❌ No se recibió archivo - req.file es null/undefined");
+      return res.status(400).json({
+        success: false,
+        error: "No se recibió archivo de audio",
+        debug: {
+          hasFile: !!req.file,
+          bodyKeys: Object.keys(req.body),
+          contentType: req.headers["content-type"],
+        },
+      });
     }
 
     const audioPath = req.file.path;
-    console.log("🎤 Archivo de audio recibido:", audioPath);
+    const audioSize = req.file.size;
+    const audioType = req.file.mimetype;
 
-    // Por ahora solo confirmamos la recepción
-    // En el futuro se podría integrar con servicios de transcripción cloud
+    console.log(`🎤 Archivo de audio recibido: ${req.file.originalname}`);
+    console.log(`📊 Tamaño: ${audioSize} bytes, Tipo: ${audioType}`);
 
-    // Limpiar archivo temporal
-    fs.unlinkSync(audioPath);
+    // Validar tamaño de archivo (máximo 10MB)
+    if (audioSize > 10 * 1024 * 1024) {
+      fs.unlinkSync(audioPath); // Limpiar archivo
+      return res.status(400).json({
+        success: false,
+        error: "Archivo de audio muy grande (máximo 10MB)",
+      });
+    }
 
-    res.json({
-      success: true,
-      message:
-        "Audio recibido correctamente. Use Web Speech API para transcripción.",
+    // Validar tipo de archivo
+    const validTypes = ["audio/webm", "audio/wav", "audio/mpeg", "audio/mp4"];
+    if (!validTypes.includes(audioType)) {
+      fs.unlinkSync(audioPath); // Limpiar archivo
+      return res.status(400).json({
+        success: false,
+        error: "Tipo de archivo no soportado. Use WebM, WAV, MP3 o MP4",
+      });
+    }
+
+    // TRANSCRIBIR EL AUDIO CON ASSEMBLYAI
+    console.log("🔄 Iniciando transcripción con AssemblyAI...");
+    const transcriptionResult = await assemblyTranscription.transcribeAudio(
+      audioPath
+    );
+
+    const audioInfo = {
       filename: req.file.originalname,
-      size: req.file.size,
+      size: audioSize,
+      type: audioType,
+      path: audioPath,
       timestamp: new Date().toISOString(),
-    });
+      transcription: transcriptionResult,
+    };
+
+    // Limpiar archivo temporal después de procesarlo
+    setTimeout(() => {
+      if (fs.existsSync(audioPath)) {
+        fs.unlinkSync(audioPath);
+        console.log("🗑️ Archivo temporal limpiado:", audioPath);
+      }
+    }, 5000); // Limpiar después de 5 segundos
+
+    if (transcriptionResult.success) {
+      res.json({
+        success: true,
+        message: "Audio transcrito correctamente",
+        data: audioInfo,
+        transcription: transcriptionResult.text,
+      });
+    } else {
+      res.json({
+        success: true,
+        message: "Audio recibido pero error en transcripción",
+        data: audioInfo,
+        transcription: "",
+        transcriptionError: transcriptionResult.error,
+      });
+    }
   } catch (error) {
     console.error("❌ Error procesando audio:", error);
     res.status(500).json({
@@ -421,6 +503,9 @@ async function startServer() {
     // Inicializar base de datos
     await db.initialize();
 
+    // Inicializar módulo de transcripción AssemblyAI
+    await assemblyTranscription.initialize();
+
     // Iniciar servidor
     app.listen(PORT, () => {
       console.log(
@@ -429,7 +514,7 @@ async function startServer() {
       console.log(
         `📊 Health check disponible en http://localhost:${PORT}/api/health`
       );
-      console.log(`🎤 Usando Web Speech API para transcripción`);
+      console.log(`🎤 Usando AssemblyAI para transcripción de audio`);
     });
   } catch (error) {
     console.error("❌ Error iniciando servidor:", error);
