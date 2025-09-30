@@ -1,0 +1,27 @@
+{
+  "name": "nutrition-exercise-tracker",
+  "version": "1.0.0",
+  "description": "Aplicación de escritorio para seguimiento nutricional y ejercicios mediante reconocimiento de voz",
+  "main": "frontend/main.js",
+  "scripts": {
+    "start": "npm run start:backend & npm run start:frontend",
+    "start:frontend": "cd frontend && npm start",
+    "start:backend": "cd backend && npm start",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "build": "cd frontend && npm run pack",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "keywords": [
+    "electron",
+    "vosk",
+    "speech-recognition",
+    "nutrition",
+    "exercise",
+    "gemini-ai"
+  ],
+  "author": "Tu nombre",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
