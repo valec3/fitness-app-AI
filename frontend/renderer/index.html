@@ -57,6 +57,26 @@
                 <span>⌨️ Escribir Texto</span>
               </label>
             </div>
+
+            <!-- Selector de dispositivo de audio -->
+            <div class="audio-device-selector">
+              <label for="audioDeviceSelect">
+                <i class="fas fa-microphone-alt"></i> Seleccionar Micrófono:
+              </label>
+              <div>
+                <select id="audioDeviceSelect" class="btn btn-secondary">
+                  <option value="">Cargando dispositivos...</option>
+                </select>
+                <button
+                  id="refreshDevicesBtn"
+                  class="btn btn-secondary btn-small"
+                  title="Actualizar lista de dispositivos"
+                >
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+              </div>
+            </div>
+
             <div class="audio-controls" id="voiceControls">
               <button id="recordBtn" class="btn btn-record" disabled>
                 <i class="fas fa-microphone"></i>
@@ -93,11 +113,6 @@
               </div>
             </div>
 
-            <!-- Audio Visualizer -->
-            <div class="audio-visualizer">
-              <canvas id="audioCanvas" width="400" height="100"></canvas>
-            </div>
-
             <!-- Recording Status -->
             <div class="recording-status">
               <span id="recordingStatus">Listo para grabar y transcribir</span>
@@ -116,8 +131,8 @@
           <h2><i class="fas fa-cog"></i> Procesamiento</h2>
           <div class="process-controls">
             <button id="transcribeBtn" class="btn btn-primary" disabled>
-              <i class="fas fa-check"></i>
-              <span>Confirmar Transcripción</span>
+              <i class="fas fa-upload"></i>
+              <span>Enviar Audio al Servidor</span>
             </button>
             <button id="processBtn" class="btn btn-primary" disabled>
               <i class="fas fa-brain"></i>
@@ -157,7 +172,7 @@
             <div class="transcription-result">
               <textarea
                 id="transcriptionText"
-                placeholder="El texto transcrito aparecerá aquí..."
+                placeholder="Graba audio o escribe manualmente lo que comiste/ejercicios que hiciste..."
                 readonly
               ></textarea>
               <div class="transcription-actions">

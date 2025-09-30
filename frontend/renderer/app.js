@@ -15,6 +15,7 @@ class NutritionTracker {
     this.currentAudioBlob = null;
     this.currentTranscription = "";
     this.currentProcessedData = null;
+    this.selectedAudioDeviceId = null; // ID del dispositivo de audio seleccionado
 
     // Web Speech API
     this.recognition = null;
@@ -36,19 +37,19 @@ class NutritionTracker {
       this.setupTabs();
       this.loadHistory();
 
-      // Verificar soporte de MediaRecorder y Web Speech API
+      // Verificar soporte de grabación de audio
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         this.showToast("Tu navegador no soporta grabación de audio", "error");
         return;
       }
 
-      // Verificar soporte de Web Speech API
-      this.initializeSpeechRecognition();
-
       // Solicitar permisos de micrófono
       await this.requestMicrophonePermissions();
 
-      // Inicializar modo de texto por defecto (ya que la voz no funciona bien en Electron)
+      // Cargar dispositivos de audio disponibles
+      await this.loadAudioDevices();
+
+      // Inicializar modo de texto por defecto
       this.initializeDefaultInputMode();
 
       this.showToast("Aplicación inicializada correctamente", "success");
@@ -159,7 +160,64 @@ class NutritionTracker {
    */
   async requestMicrophonePermissions() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("🎤 Solicitando permisos de micrófono...");
+
+      // Verificar que navigator.mediaDevices está disponible
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("navigator.mediaDevices no está disponible");
+      }
+
+      // Listar dispositivos de entrada de audio disponibles
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(
+          (device) => device.kind === "audioinput"
+        );
+        console.log(
+          "🎧 Dispositivos de audio encontrados:",
+          audioInputs.length
+        );
+        audioInputs.forEach((device, index) => {
+          console.log(
+            `  ${index + 1}. ${device.label || "Dispositivo sin nombre"} (${
+              device.deviceId
+            })`
+          );
+        });
+
+        if (audioInputs.length === 0) {
+          throw new Error("No se encontraron dispositivos de entrada de audio");
+        }
+      } catch (deviceError) {
+        console.warn("⚠️ No se pudieron enumerar dispositivos:", deviceError);
+      }
+
+      // Intentar obtener acceso al micrófono
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      console.log("✅ Permisos de micrófono concedidos");
+      console.log("🔊 Stream obtenido:", {
+        active: stream.active,
+        tracks: stream.getTracks().length,
+      });
+
+      // Verificar tracks de audio
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        console.log("🎵 Track de audio:", {
+          label: audioTracks[0].label,
+          enabled: audioTracks[0].enabled,
+          muted: audioTracks[0].muted,
+          readyState: audioTracks[0].readyState,
+        });
+      }
+
       stream.getTracks().forEach((track) => track.stop()); // Detener inmediatamente
 
       // Habilitar botón de grabación
@@ -167,10 +225,155 @@ class NutritionTracker {
 
       this.showToast("Permisos de micrófono concedidos", "success");
     } catch (error) {
-      console.error("Error obteniendo permisos:", error);
+      console.error("❌ Error obteniendo permisos:", error);
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
+
+      let errorMessage =
+        "Se requieren permisos de micrófono para usar la aplicación";
+
+      if (error.name === "NotAllowedError") {
+        errorMessage =
+          "Permisos de micrófono denegados. Permite el acceso al micrófono en la configuración del navegador.";
+      } else if (error.name === "NotFoundError") {
+        errorMessage =
+          "No se encontró micrófono. Verifica que tienes un micrófono conectado.";
+      } else if (error.name === "NotSupportedError") {
+        errorMessage = "Tu navegador no soporta grabación de audio.";
+      } else if (error.name === "OverconstrainedError") {
+        errorMessage = "Las restricciones de audio no se pueden satisfacer.";
+      }
+
+      this.showToast(errorMessage, "error");
+    }
+  }
+
+  /**
+   * Carga la lista de dispositivos de audio disponibles
+   */
+  async loadAudioDevices() {
+    try {
+      console.log("🎧 Cargando dispositivos de audio...");
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(
+        (device) => device.kind === "audioinput"
+      );
+
+      const selector = document.getElementById("audioDeviceSelect");
+      selector.innerHTML = ""; // Limpiar opciones existentes
+
+      if (audioInputs.length === 0) {
+        selector.innerHTML =
+          '<option value="">No se encontraron micrófonos</option>';
+        this.showToast("No se encontraron dispositivos de audio", "warning");
+        return;
+      }
+
+      // Agregar opción para dispositivo por defecto
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "Usar dispositivo por defecto";
+      selector.appendChild(defaultOption);
+
+      // Agregar cada dispositivo
+      audioInputs.forEach((device, index) => {
+        const option = document.createElement("option");
+        option.value = device.deviceId;
+
+        let label = device.label || `Micrófono ${index + 1}`;
+
+        // Marcar dispositivos específicos
+        if (label.includes("Realtek")) {
+          label += " ⭐ (Recomendado)";
+        } else if (label.includes("DroidCam")) {
+          label += " (Cámara virtual)";
+        } else if (label.includes("Default")) {
+          label += " (Sistema)";
+        }
+
+        option.textContent = label;
+        selector.appendChild(option);
+      });
+
+      // Auto-seleccionar Realtek si está disponible
+      const realtekDevice = audioInputs.find(
+        (device) =>
+          device.label &&
+          device.label.includes("Realtek") &&
+          !device.label.includes("Communications")
+      );
+
+      if (realtekDevice) {
+        selector.value = realtekDevice.deviceId;
+        this.selectedAudioDeviceId = realtekDevice.deviceId;
+        console.log(
+          "✅ Auto-seleccionado micrófono Realtek:",
+          realtekDevice.label
+        );
+        this.showToast(
+          `Micrófono seleccionado: ${realtekDevice.label}`,
+          "success"
+        );
+      } else {
+        // Si no hay Realtek, usar el primer dispositivo que no sea DroidCam
+        const preferredDevice = audioInputs.find(
+          (device) => device.label && !device.label.includes("DroidCam")
+        );
+
+        if (preferredDevice) {
+          selector.value = preferredDevice.deviceId;
+          this.selectedAudioDeviceId = preferredDevice.deviceId;
+          console.log(
+            "✅ Auto-seleccionado micrófono preferido:",
+            preferredDevice.label
+          );
+        }
+      }
+
+      console.log(`🎧 ${audioInputs.length} dispositivos de audio cargados`);
+    } catch (error) {
+      console.error("❌ Error cargando dispositivos de audio:", error);
+      this.showToast("Error cargando dispositivos de audio", "error");
+    }
+  }
+
+  /**
+   * Selecciona un dispositivo de audio específico
+   */
+  selectAudioDevice(deviceId) {
+    this.selectedAudioDeviceId = deviceId;
+
+    if (deviceId) {
+      // Buscar el nombre del dispositivo
+      navigator.mediaDevices.enumerateDevices().then((devices) => {
+        const selectedDevice = devices.find(
+          (device) => device.deviceId === deviceId
+        );
+        if (selectedDevice) {
+          console.log(
+            "🎯 Dispositivo de audio seleccionado:",
+            selectedDevice.label
+          );
+          this.showToast(
+            `Micrófono cambiado a: ${selectedDevice.label}`,
+            "info"
+          );
+        }
+      });
+    } else {
+      console.log("🎯 Usando dispositivo de audio por defecto");
+      this.showToast("Usando micrófono por defecto del sistema", "info");
+    }
+
+    // Si está grabando, mostrar advertencia
+    if (this.isRecording) {
       this.showToast(
-        "Se requieren permisos de micrófono para usar la aplicación",
-        "error"
+        "⚠️ Detén la grabación actual para cambiar de micrófono",
+        "warning"
       );
     }
   }
@@ -212,6 +415,16 @@ class NutritionTracker {
     document
       .getElementById("playBtn")
       .addEventListener("click", () => this.playRecording());
+
+    // Selectores de dispositivos de audio
+    document
+      .getElementById("audioDeviceSelect")
+      .addEventListener("change", (e) =>
+        this.selectAudioDevice(e.target.value)
+      );
+    document
+      .getElementById("refreshDevicesBtn")
+      .addEventListener("click", () => this.loadAudioDevices());
 
     // Botones de procesamiento
     document
@@ -282,111 +495,241 @@ class NutritionTracker {
   }
 
   /**
-   * Inicia la grabación de audio y reconocimiento de voz
+   * Cambia a una pestaña específica programáticamente
+   */
+  switchTab(tabName) {
+    const tabButtons = document.querySelectorAll(".tab-btn");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    // Remover clase active de todos los botones y contenidos
+    tabButtons.forEach((btn) => btn.classList.remove("active"));
+    tabContents.forEach((content) => content.classList.remove("active"));
+
+    // Activar la pestaña específica
+    const targetButton = document.querySelector(`[data-tab="${tabName}"]`);
+    const targetContent = document.getElementById(tabName + "Tab");
+
+    if (targetButton && targetContent) {
+      targetButton.classList.add("active");
+      targetContent.classList.add("active");
+    }
+  }
+
+  /**
+   * Inicia la grabación de audio con MediaRecorder
    */
   async startRecording() {
     try {
-      // Verificar conexión a internet
-      if (!navigator.onLine) {
-        this.showToast(
-          "Sin conexión a internet. El reconocimiento de voz requiere conexión.",
-          "error"
-        );
+      console.log("🎤 Iniciando grabación de audio...");
+
+      // Verificar que no esté ya grabando
+      if (this.isRecording) {
+        this.showToast("Ya se está grabando", "warning");
         return;
       }
 
-      // Verificar que el reconocimiento de voz esté disponible
-      if (!this.recognition) {
-        this.showToast("Reconocimiento de voz no disponible", "error");
-        return;
-      }
+      // Limpiar datos anteriores
+      this.audioChunks = [];
+      this.currentAudioBlob = null;
+      this.currentTranscription = "";
+      document.getElementById("transcriptionText").value = "";
 
-      // Reiniciar contadores de error
-      this.hasRecognitionError = false;
-      this.retryCount = 0;
-
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Configurar constraints de audio optimizadas para transcripción
+      const constraints = {
         audio: {
-          sampleRate: 16000,
-          channelCount: 1,
+          sampleRate: 44100, // Buena calidad para transcripción
+          channelCount: 1, // Mono suficiente para voz
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
+          // Usar dispositivo específico si está seleccionado
+          ...(this.selectedAudioDeviceId && {
+            deviceId: { exact: this.selectedAudioDeviceId },
+          }),
         },
+      };
+
+      console.log("🎯 Solicitando acceso al micrófono...");
+      console.log(
+        "🎧 Dispositivo seleccionado:",
+        this.selectedAudioDeviceId || "Por defecto"
+      );
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      console.log("✅ Stream de micrófono obtenido:", {
+        active: stream.active,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
       });
 
-      // Inicializar MediaRecorder para grabar audio (opcional)
-      this.audioChunks = [];
-      this.mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm;codecs=opus",
+      // Verificar tracks de audio
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        throw new Error("No se obtuvieron tracks de audio del stream");
+      }
+
+      console.log("🎵 Audio track activo:", {
+        label: audioTracks[0].label,
+        enabled: audioTracks[0].enabled,
+        muted: audioTracks[0].muted,
+        readyState: audioTracks[0].readyState,
       });
 
+      // Verificar soporte de MediaRecorder
+      if (!MediaRecorder.isTypeSupported("audio/webm")) {
+        console.warn("⚠️ audio/webm no soportado, usando tipo por defecto");
+      }
+
+      // Configurar MediaRecorder con mejor configuración
+      const options = {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm",
+        audioBitsPerSecond: 128000, // 128 kbps para buena calidad
+      };
+
+      this.mediaRecorder = new MediaRecorder(stream, options);
+
+      console.log("📊 MediaRecorder creado:", {
+        mimeType: this.mediaRecorder.mimeType,
+        state: this.mediaRecorder.state,
+        audioBitsPerSecond: this.mediaRecorder.audioBitsPerSecond,
+      });
+
+      // Configurar eventos de MediaRecorder
       this.mediaRecorder.ondataavailable = (event) => {
+        console.log("📊 Datos de audio disponibles:", event.data.size, "bytes");
         if (event.data.size > 0) {
           this.audioChunks.push(event.data);
+          console.log(`📈 Total chunks: ${this.audioChunks.length}`);
+        } else {
+          console.warn("⚠️ Chunk de audio vacío recibido");
         }
       };
 
       this.mediaRecorder.onstop = () => {
+        console.log("🛑 Grabación finalizada, procesando audio...");
+        console.log(`📦 Chunks recolectados: ${this.audioChunks.length}`);
+
+        if (this.audioChunks.length === 0) {
+          console.error("❌ No se recolectaron chunks de audio");
+          this.showToast("Error: No se grabó audio", "error");
+          return;
+        }
+
+        // Crear blob del audio grabado
         this.currentAudioBlob = new Blob(this.audioChunks, {
-          type: "audio/wav",
+          type: this.mediaRecorder.mimeType,
         });
+
+        console.log(
+          `✅ Audio procesado: ${this.currentAudioBlob.size} bytes, tipo: ${this.currentAudioBlob.type}`
+        );
+
+        if (this.currentAudioBlob.size === 0) {
+          console.error("❌ El blob de audio está vacío");
+          this.showToast("Error: El archivo de audio está vacío", "error");
+          return;
+        }
+
+        // Actualizar UI y detener stream
         this.updateAudioPreview();
-        stream.getTracks().forEach((track) => track.stop());
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          console.log("🔇 Track de audio detenido");
+        });
+
+        // Habilitar botón de transcripción
+        this.enableTranscriptionButton();
+      };
+
+      this.mediaRecorder.onerror = (event) => {
+        console.error("❌ Error en MediaRecorder:", event.error);
+        this.showToast("Error en grabación: " + event.error, "error");
+        this.stopRecording();
+      };
+
+      this.mediaRecorder.onstart = () => {
+        console.log("🎬 MediaRecorder iniciado correctamente");
       };
 
       // Configurar visualizador de audio
       this.setupAudioVisualizer(stream);
 
-      // Iniciar grabación y reconocimiento
-      this.mediaRecorder.start(100);
-      this.recognition.start();
-
-      // Limpiar transcripción anterior
-      this.currentTranscription = "";
-      document.getElementById("transcriptionText").value = "";
+      // Iniciar grabación con intervalo de chunks
+      this.mediaRecorder.start(1000); // Guardar chunks cada segundo
 
       this.isRecording = true;
       this.startRecordingTimer();
       this.updateRecordingUI();
+
+      console.log("🎙️ Grabación iniciada correctamente");
+      this.showToast("Grabación iniciada", "success");
     } catch (error) {
-      console.error("Error iniciando grabación:", error);
-      this.showToast("Error iniciando grabación: " + error.message, "error");
+      console.error("❌ Error iniciando grabación:", error);
+      this.isRecording = false;
+      this.updateRecordingUI();
+
+      if (error.name === "NotAllowedError") {
+        this.showToast(
+          "Permiso de micrófono denegado. Permite el acceso al micrófono.",
+          "error"
+        );
+      } else if (error.name === "NotFoundError") {
+        this.showToast(
+          "No se encontró micrófono. Conecta un micrófono.",
+          "error"
+        );
+      } else {
+        this.showToast("Error iniciando grabación: " + error.message, "error");
+      }
     }
   }
 
   /**
-   * Detiene la grabación de audio y reconocimiento de voz
+   * Detiene la grabación de audio
    */
   stopRecording() {
-    // Detener reconocimiento de voz
-    if (this.recognition && this.isListening) {
-      this.recognition.stop();
-    }
+    try {
+      console.log("🛑 Deteniendo grabación...");
 
-    // Detener grabación de audio
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop();
+      if (!this.isRecording) {
+        this.showToast("No hay grabación en curso", "warning");
+        return;
+      }
+
+      // Detener MediaRecorder
+      if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+        this.mediaRecorder.stop();
+        console.log("📱 MediaRecorder detenido");
+      }
+
+      // Actualizar estado
       this.isRecording = false;
       this.stopRecordingTimer();
       this.updateRecordingUI();
 
-      if (this.audioContext) {
-        this.audioContext.close();
-      }
+      console.log("✅ Grabación detenida correctamente");
+      this.showToast("Grabación finalizada", "success");
+    } catch (error) {
+      console.error("❌ Error deteniendo grabación:", error);
+      this.showToast("Error deteniendo grabación: " + error.message, "error");
 
-      // Habilitar botón de procesamiento si hay transcripción
-      if (this.currentTranscription.trim()) {
-        document.getElementById("processBtn").disabled = false;
-        this.showToast("Transcripción completada", "success");
-
-        // Cambiar a la pestaña de transcripción
-        this.switchToTab("transcription");
-      }
+      // Forzar reset del estado
+      this.isRecording = false;
+      this.updateRecordingUI();
     }
+  }
 
-    // Resetear variables de error
-    this.hasRecognitionError = false;
-    this.retryCount = 0;
+  /**
+   * Habilita el botón de transcripción después de grabar
+   */
+  enableTranscriptionButton() {
+    const transcribeBtn = document.getElementById("transcribeBtn");
+    if (transcribeBtn) {
+      transcribeBtn.disabled = false;
+      this.showToast("Audio listo para transcribir", "info");
+    }
   }
 
   /**
@@ -440,7 +783,7 @@ class NutritionTracker {
   }
 
   /**
-   * Configura el visualizador de audio
+   * Configura el visualizador de audio y feedback en tiempo real
    */
   setupAudioVisualizer(stream) {
     const canvas = document.getElementById("audioCanvas");
@@ -450,6 +793,15 @@ class NutritionTracker {
       window.webkitAudioContext)();
     this.analyser = this.audioContext.createAnalyser();
     const source = this.audioContext.createMediaStreamSource(stream);
+
+    // Crear un GainNode para controlar el volumen del feedback
+    const gainNode = this.audioContext.createGain();
+    gainNode.gain.value = 0.1; // Volumen bajo para evitar feedback
+
+    // Conectar el audio para feedback en tiempo real (opcional)
+    // Nota: Comentado por defecto para evitar eco/feedback molesto
+    // source.connect(gainNode);
+    // gainNode.connect(this.audioContext.destination);
 
     source.connect(this.analyser);
     this.analyser.fftSize = 256;
@@ -463,6 +815,16 @@ class NutritionTracker {
       requestAnimationFrame(draw);
 
       this.analyser.getByteFrequencyData(dataArray);
+
+      // Calcular el nivel promedio de audio para mostrar un indicador
+      let total = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        total += dataArray[i];
+      }
+      const averageLevel = total / bufferLength;
+
+      // Actualizar indicador de nivel de voz
+      this.updateVoiceLevelIndicator(averageLevel);
 
       canvasContext.fillStyle = "#f7fafc";
       canvasContext.fillRect(0, 0, canvas.width, canvas.height);
@@ -496,6 +858,37 @@ class NutritionTracker {
     };
 
     draw();
+  }
+
+  /**
+   * Actualiza el indicador visual del nivel de voz
+   */
+  updateVoiceLevelIndicator(level) {
+    const indicator = document.getElementById("voiceLevelIndicator");
+    if (!indicator) return;
+
+    // Normalizar el nivel (0-100)
+    const normalizedLevel = Math.min(100, (level / 128) * 100);
+
+    // Actualizar la barra de progreso
+    indicator.style.width = normalizedLevel + "%";
+
+    // Cambiar color según el nivel
+    if (normalizedLevel < 20) {
+      indicator.style.backgroundColor = "#e53e3e"; // Rojo - muy bajo
+    } else if (normalizedLevel < 40) {
+      indicator.style.backgroundColor = "#dd6b20"; // Naranja - bajo
+    } else if (normalizedLevel < 80) {
+      indicator.style.backgroundColor = "#38a169"; // Verde - bueno
+    } else {
+      indicator.style.backgroundColor = "#3182ce"; // Azul - alto
+    }
+
+    // Mostrar nivel numérico
+    const levelText = document.getElementById("voiceLevelText");
+    if (levelText) {
+      levelText.textContent = Math.round(normalizedLevel) + "%";
+    }
   }
 
   /**
@@ -540,6 +933,7 @@ class NutritionTracker {
     const playBtn = document.getElementById("playBtn");
     const transcribeBtn = document.getElementById("transcribeBtn");
     const statusElement = document.getElementById("recordingStatus");
+    const voiceLevelContainer = document.getElementById("voiceLevelContainer");
 
     if (this.isRecording) {
       recordBtn.disabled = true;
@@ -551,7 +945,12 @@ class NutritionTracker {
       playBtn.disabled = true;
       transcribeBtn.disabled = true;
 
-      statusElement.textContent = "Grabando y transcribiendo en tiempo real...";
+      // Mostrar indicador de nivel de voz
+      if (voiceLevelContainer) {
+        voiceLevelContainer.style.display = "flex";
+      }
+
+      statusElement.textContent = "Grabando - habla claramente al micrófono...";
     } else {
       recordBtn.disabled = false;
       recordBtn.classList.remove("recording");
@@ -560,10 +959,16 @@ class NutritionTracker {
 
       stopBtn.disabled = true;
 
+      // Ocultar indicador de nivel de voz
+      if (voiceLevelContainer) {
+        voiceLevelContainer.style.display = "none";
+      }
+
       if (this.currentAudioBlob || this.currentTranscription.trim()) {
         playBtn.disabled = false;
         transcribeBtn.disabled = false;
-        statusElement.textContent = "Grabación y transcripción completadas";
+        statusElement.textContent =
+          "Grabación completada - ¡puedes reproducir o enviar!";
       } else {
         playBtn.disabled = true;
         transcribeBtn.disabled = true;
@@ -587,34 +992,91 @@ class NutritionTracker {
   /**
    * Procesa la transcripción actual (sin necesidad de transcribir)
    */
+  /**
+   * Envía el audio grabado al backend para transcripción con AssemblyAI
+   */
   async transcribeAudio() {
-    const text = this.currentTranscription.trim();
-
-    if (!text) {
+    if (!this.currentAudioBlob) {
       this.showToast(
-        "No hay transcripción disponible. Inicia una grabación primero.",
+        "No hay audio disponible. Graba audio primero.",
         "warning"
       );
       return;
     }
 
-    this.showProcessingStatus("Enviando transcripción...");
+    this.showProcessingStatus(
+      "Subiendo audio y transcribiendo con AssemblyAI..."
+    );
 
     try {
-      const result = await window.backendAPI.sendTranscription(text);
+      console.log("📤 Enviando audio al backend para transcripción...");
+      console.log(
+        `📊 Tamaño: ${this.currentAudioBlob.size} bytes, Tipo: ${this.currentAudioBlob.type}`
+      );
+
+      // Enviar el blob directamente (el preload.js manejará la conversión a FormData)
+      const result = await window.backendAPI.uploadAudio(this.currentAudioBlob);
 
       if (result.success) {
-        document.getElementById("transcriptionText").value =
-          result.transcription;
-        document.getElementById("processBtn").disabled = false;
+        console.log("✅ Audio procesado correctamente:", result);
 
-        this.showToast("Transcripción procesada correctamente", "success");
+        // Mostrar información del archivo procesado
+        this.showToast(
+          `Audio procesado: ${result.data.filename} (${Math.round(
+            result.data.size / 1024
+          )} KB)`,
+          "success"
+        );
+
+        // MANEJAR LA TRANSCRIPCIÓN
+        if (result.transcription && result.transcription.length > 0) {
+          console.log("✅ Transcripción recibida:", result.transcription);
+
+          // Mostrar la transcripción en el textarea
+          const transcriptionTextArea =
+            document.getElementById("transcriptionText");
+          transcriptionTextArea.value = result.transcription;
+          this.currentTranscription = result.transcription;
+
+          // Cambiar a la pestaña de transcripción para mostrar el resultado
+          this.switchTab("transcription");
+
+          // Habilitar botón de procesamiento con IA
+          document.getElementById("processBtn").disabled = false;
+
+          this.showToast(
+            "¡Transcripción completada! Revisa el texto y procesa con IA.",
+            "success"
+          );
+        } else {
+          // No hay transcripción o está vacía
+          if (result.transcriptionError) {
+            console.error(
+              "❌ Error en transcripción:",
+              result.transcriptionError
+            );
+            this.showToast(
+              `Error en transcripción: ${result.transcriptionError}`,
+              "error"
+            );
+          } else {
+            this.showToast(
+              "No se pudo transcribir el audio. Escribe manualmente el texto.",
+              "warning"
+            );
+          }
+
+          // Permitir entrada manual
+          document.getElementById("transcriptionText").placeholder =
+            "La transcripción automática falló. Escribe manualmente lo que dijiste para continuar con el procesamiento de IA.";
+          document.getElementById("processBtn").disabled = false;
+        }
       } else {
-        throw new Error(result.error || "Error enviando transcripción");
+        throw new Error(result.error || "Error enviando audio");
       }
     } catch (error) {
-      console.error("Error enviando transcripción:", error);
-      this.showToast("Error enviando transcripción: " + error.message, "error");
+      console.error("❌ Error enviando audio:", error);
+      this.showToast("Error enviando audio: " + error.message, "error");
     } finally {
       this.hideProcessingStatus();
     }

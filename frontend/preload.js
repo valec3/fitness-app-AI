@@ -42,17 +42,55 @@ contextBridge.exposeInMainWorld("backendAPI", {
     return await response.json();
   },
 
-  // Subir archivo de audio (para futuras implementaciones)
+  // Subir archivo de audio al backend
   uploadAudio: async (audioBlob) => {
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "recording.wav");
+    try {
+      const formData = new FormData();
 
-    const response = await fetch("http://localhost:3001/api/upload-audio", {
-      method: "POST",
-      body: formData,
-    });
+      console.log("🎤 Iniciando upload de audio");
+      console.log("📊 Blob info:", {
+        size: audioBlob.size,
+        type: audioBlob.type,
+      });
 
-    return await response.json();
+      // Crear un File object desde el Blob para mejor compatibilidad
+      const audioFile = new File([audioBlob], "recording.webm", {
+        type: audioBlob.type || "audio/webm",
+        lastModified: Date.now(),
+      });
+
+      formData.append("audio", audioFile);
+
+      console.log("📤 Enviando archivo de audio:", {
+        name: audioFile.name,
+        size: audioFile.size,
+        type: audioFile.type,
+      });
+
+      console.log("📋 FormData creado, enviando request...");
+
+      const response = await fetch("http://localhost:3001/api/upload-audio", {
+        method: "POST",
+        body: formData,
+      });
+
+      console.log("📡 Response recibido:", {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("📡 Response data:", result);
+      return result;
+    } catch (error) {
+      console.error("❌ Error en uploadAudio:", error);
+      return { success: false, error: error.message };
+    }
   },
 
   // Procesar texto con Gemini
